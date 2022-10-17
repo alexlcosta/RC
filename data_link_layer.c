@@ -9,18 +9,22 @@
 
 #include "data_link_layer.h"
 
-// TODO
-// char sender; //trasmitter or receiver
+// receiver or transmitter
+char sender;
 
 int llopen(int port, char *a){
-    /*if(strcmp(a, "RECEIVER"))
+    char buf[SET_UA_BUF_SIZE];
+
+    if(strcmp(a, "RECEIVER")){
         sender = RECEIVER;
-    else if(strcmp(a, "TRANSMITTER"))
+    }
+    else if(strcmp(a, "TRANSMITTER")){
         sender = TRANSMITTER;
+    }
     else {
         printf("Invalid sender!\n");
         return -1;
-    }*/
+    }
 
     //choose port 
     if(port == 0){
@@ -42,7 +46,19 @@ int llopen(int port, char *a){
         return -1;
     }
 
-    // process state machine here -> cycle(?)
+    // emissor -> recetor
+    buf[0] = FLAG;
+    buf[1] = A_EMI;
+    buf[2] = C_SET;
+    buf[3] = BCC_1;
+    buf[4] = FLAG;
+
+    write(fd, buf, SET_UA_BUF_SIZE);
+
+    int counter = 3;
+    while(counter > 0){
+
+    }
 
     return fd;
 }
