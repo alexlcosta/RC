@@ -13,7 +13,7 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
-#include "aux.h"
+#include "auxfunc.h"
 #include "state_machine.h"
 
 typedef enum
