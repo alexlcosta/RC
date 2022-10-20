@@ -35,6 +35,42 @@ int byteStuffing(int size, const unsigned char* data, unsigned char* frame){
 
 //byte destuffing
 
+int byteDestuffing(int size, unsigned char* frame){
+    unsigned char *buf = (unsigned char*)malloc(size * sizeof(unsigned char));
+
+    for(int i = 0; i < size; i++){
+        buf[i] = frame[i];
+    }
+
+    unsigned char byte;
+    int previousESC = FALSE;
+    int length = 4; 
+
+    for(int i = 4; i < size; i++){
+        byte = frame[i];
+        if(byte == ESC){
+            previousESC = TRUE;
+            continue;
+        }
+        else if(previousESC){
+            if(byte == ESC ^ 0x20)
+                frame[length] = ESC;
+            else if(byte == FLAG ^ 0x20)
+                frame[length] = FLAG; 
+            previousESC == FALSE;
+            length++;
+        }
+        else{
+            frame[length] = buf[i];
+            length++;
+        }
+    }
+
+    return length;
+}
+
+
+
 //createFrameInfo
 int createIFrame(int size, const unsigned char *data, int iFrameType, unsigned char *frame){
     frame[0] = FLAG;
@@ -106,4 +142,30 @@ void receiveSupFrame(int fd, unsigned char *frame, int type){
         length++;
         frame[length-1] = byte;
     }while(state==STOP);
+}
+
+//receive info frame
+
+int receiveIFrame(int fd, unsigned char *frame){
+    unsigned char byteGetter;
+    int byte = 0, bytes = 0;
+    STATE s = START;
+
+    do{
+        byte = read(fd, &byteGetter, 1);
+        if(byte == 0)
+            continue;
+        bytes++;
+        s = infoMachine(s, byteGetter, frame);
+        if(s == START)
+            return -1;
+    }while(s != STOP);
+
+    int length = byteDestuffing(bytes, frame);
+
+    if(reallloc(frame, length*sizeof(unsigned char)) == NULL){
+        printf("Realloc failed \n");
+    }
+
+    return length;
 }

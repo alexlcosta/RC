@@ -118,8 +118,41 @@ int llread(unsigned char *packet, LinkLayer connectionParameters)
 {
     unsigned char *I_frame = (unsigned char*)malloc((MAX_PAYLOAD_SIZE*2+6) * sizeof(unsigned char));
 
-    int bytes = read(connectionParameters.port, I_frame, )
-    return 0;
+    int bytes = receiveIFrame(connectionParameters.port, I_frame);
+    if(bytes == -1){
+        printf("error iframe\n");
+        return -1;
+    }
+
+    unsigned char *frame = (unsigned char *)malloc(SUP_FRAME_SIZE*sizeof(unsigned char));
+
+    if(I_frame[2] == C_I0 && connectionParameters.sequence_number == 1){
+        printf("Resend I1\n");
+        createSupFrame(RR1, frame);
+    }
+    else if (I_frame[2] == C_I1 && connectionParameters.sequence_number == 0){
+        printf("Resend I0\n");
+        createSupFrame(RR0, frame);
+    }
+    else if (I_frame[2] == C_I1){
+        createSupFrame(RR0, frame);
+    }
+    else if (I_frame[2] == C_I0){
+        createSupFrame(RR1, frame);
+    }
+    else{
+        return -1;
+    } 
+
+    write(connectionParameters.port, frame, SUP_FRAME_SIZE);
+
+    for(int i = 0; i < bytes; i++){
+        packet[i] = I_frame[i+4];
+    }
+
+    sleep(1);
+
+    return bytes;
 }
 
 ////////////////////////////////////////////////

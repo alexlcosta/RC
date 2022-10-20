@@ -2,6 +2,7 @@
 #define AUX_H
 
 #include "state_machine.h"
+#include <stdio.h>
 
 typedef enum{
     SET,
@@ -17,6 +18,7 @@ int byteStuffing(int size, const unsigned char* data, unsigned char* frame);
 int createIFrame(int size, const unsigned char *data, int iFrameType, unsigned char *frame);
 void createSupFrame(FRAME type, unsigned char *frame);
 void receiveSupFrame(int fd, unsigned char *frame, int type);
+int receiveIFrame(int fd, unsigned char *frame);
 
 
 #endif

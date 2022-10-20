@@ -15,9 +15,7 @@ STATE machine(STATE s, SET_UA type, unsigned char input){
                 state = FLAG_RCV;
             break;
         case FLAG_RCV:
-            if(input == FLAG)
-                state = FLAG_RCV;
-            else if(input == A_EMI)
+            if(input == A_EMI)
                 state = A_RCV;
             else 
                 state = START; 
@@ -95,3 +93,70 @@ STATE machine(STATE s, SET_UA type, unsigned char input){
     return state; 
 }
 
+STATE infoMachine(STATE s, unsigned char input, unsigned char *frame){
+    static int i = 0;
+
+    switch ((s))
+    {
+    case START:
+        i = 0;
+        if(input == FLAG){
+            s = FLAG_RCV;
+            i++;
+            frame[i] = FLAG;
+        }
+        break;
+    case FLAG_RCV:
+        if(input == A){
+            frame[i++] = A;
+            s = A_RCV;
+        } 
+        else if(input == FLAG)
+            break;
+        else 
+            s = START;
+        break;
+    case A_RCV:
+        if(input == C_I0){
+            frame[i++] = C_I0;
+            c = C_I0;
+            s = C_RCV;
+            break;
+        }
+        else if(input == C_I1){
+            frame[i++] = C_I1;
+            c = C_I1;
+            s = C_RCV;
+            break;
+        }
+        else if(input == FLAG)
+            s = FLAG_RCV;
+        else 
+            s = START;
+        break;
+    case C_RCV:
+        if(input == (A_EMI^c)){
+            frame[i++] = input;
+            s = BCC_OK;
+            break;
+        }
+        else if(input == FLAG)
+            s = FLAG_RECEIVED;
+        else 
+            s = START;
+        break;
+    case BCC_OK:
+        if(input == FLAG){
+            state = STOP_STATE;
+            frame[i++]=FLAG;
+        }
+        else 
+            frame[i++] = input;
+        break;
+    case STOP:
+        s = START;
+        break;
+    }
+
+    return state; 
+}
