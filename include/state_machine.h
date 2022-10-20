@@ -12,7 +12,9 @@ typedef enum{
 
 typedef enum{
     SET,
-    UA
+    UA,
+    ACK,
+    DISC
 }SET_UA;
 
 STATE machine(STATE s, SET_UA type, unsigned char input);
