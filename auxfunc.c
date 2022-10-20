@@ -1,5 +1,5 @@
 #include "macros.h"
-#include "aux.h"
+#include "auxfunc.h"
 
 //byte stuffing
 int byteStuffing(int size, const unsigned char* data, unsigned char* frame){
