@@ -158,9 +158,70 @@ int llread(unsigned char *packet, LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose(int showStatistics)
+int llclose(LinkLayer connectionParameters)
 {
-    // TODO
+    if(connectionParameters.role == LlTx){
+        if(createTDisc(connectionParameters)){
+            printf("Fail\n");
+            return -1;
+        }
+    }
+    else if(connectionParameters.role == LlRx){
+        if(createRDisc(connectionParameters)){
+            printf("Fail\n");
+            return -1;
+        }
+    }
+
+   if (tcsetattr(connectionParameters.port, TCSANOW, &oldtio) == -1){
+        perror("Couldn't close port\n");
+        return -1;
+    }
+
+    return close(connectionParameters.port);
+}
+
+int createTDisc(LinkLayer connectionParameters){
+    unsigned char *frame = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+    unsigned char *RCVframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+    unsigned char *UAframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+
+    createSupFrame(DISC, frame);
+
+    write(ll.port, frame, SUP_FRAME_SIZE);
+
+    sleep(1);
+
+    if(receiveSupFrame(connectionParameters.port, RCVframe, DISC) == -1){
+        printf("Fail\n");
+        return -1;
+    }
+
+    createSupFrame(UA, UAframe);
+
+    write(connectionParameters.port, UAframe, SUP_FRAME_SIZE);
 
     return 1;
+}
+
+int createRDisc(LinkLayer connectionParameters) {
+    unsigned char *frame = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+    unsigned char *RCVframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+    unsigned char *UAframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+
+    if(receiveSupFrame(connectionParameters.port, frame, DISC) == -1){
+        printf("Fail\n");
+        return -1;
+    }
+
+    createSupFrame(DISC, RCVframe);
+
+    write(connectionParameters.port, RCVframe, SUP_FRAME_SIZE);
+
+    if(receiveSupFrame(connectionParameters.port, UAframe, UA) == -1){
+        printf("Fail\n");
+        return -1;
+    }
+
+    return 0;
 }
