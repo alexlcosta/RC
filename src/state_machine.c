@@ -1,12 +1,11 @@
 #include "state_machine.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <termios.h>
+
 #include "macros.h"
 
 unsigned char c = 0x00;
 
-STATE machine(STATE s, SET_UA type, unsigned char input){
+
+STATE machine(STATE s, SET_UA type, unsigned char input, int role){
     STATE state;     
     
     switch(s){
@@ -15,21 +14,21 @@ STATE machine(STATE s, SET_UA type, unsigned char input){
                 state = FLAG_RCV;
             break;
         case FLAG_RCV:
-            if(input == A_EMI)
+            if(input == A_EMI || (input == A_REC && (type == UAFRAME || type == DISCFRAME)))
                 state = A_RCV;
             else 
                 state = START; 
             break;
         case A_RCV:
-            if(type == SET){
+            if(type == SETFRAME){
                 if(input == C_SET)
                     state = C_RCV;
-                    break;
+                break;
             }
-            else if(type == UA){
+            else if(type == UAFRAME){
                 if(input == C_UA)
                     state = C_RCV;
-                    break;
+                break;
             }
             else if(type == ACK){
                 if(input == C_RR0 || input == C_RR1 || input == C_REJ0 || input == C_REJ1){
@@ -38,7 +37,7 @@ STATE machine(STATE s, SET_UA type, unsigned char input){
                     break;
                 }
             }
-            else if(type == DISC){
+            else if(type == DISCFRAME){
                 if(input == C_DISC){
                     state = C_RCV;
                     break;
@@ -50,14 +49,14 @@ STATE machine(STATE s, SET_UA type, unsigned char input){
                 state = START; 
             break;
         case C_RCV:
-            if(type == SET){
-                if(input == A_EMI^C_SET){
+            if(type == SETFRAME){
+                if(input == (A_EMI^C_SET)){
                     state = BCC_OK;
                     break;
                 }
             }
-            else if(type == UA){
-                if(input == A_EMI^C_UA){
+            else if(type == UAFRAME){
+                if((input == (A_EMI^C_UA) && role == 0) || (input == (A_REC^C_UA) && role == 1)){
                     state = BCC_OK;
                     break;
                 }
@@ -68,8 +67,8 @@ STATE machine(STATE s, SET_UA type, unsigned char input){
                     break;
                 }
             }
-            else if(type == DISC){
-                if(input == (A_EMI^C_DISC)){
+            else if(type == DISCFRAME){
+                if((input == (A_EMI^C_DISC) && role == 1) || (input == (A_REC^C_DISC) && role == 0)){
                     state = BCC_OK;
                     break;
                 }
@@ -96,19 +95,18 @@ STATE machine(STATE s, SET_UA type, unsigned char input){
 STATE infoMachine(STATE s, unsigned char input, unsigned char *frame){
     static int i = 0;
 
-    switch ((s))
+    switch (s)
     {
     case START:
         i = 0;
         if(input == FLAG){
             s = FLAG_RCV;
-            i++;
-            frame[i] = FLAG;
+            frame[i++] = FLAG;
         }
         break;
     case FLAG_RCV:
-        if(input == A){
-            frame[i++] = A;
+        if(input == A_EMI){
+            frame[i++] = A_EMI;
             s = A_RCV;
         } 
         else if(input == FLAG)
@@ -141,13 +139,13 @@ STATE infoMachine(STATE s, unsigned char input, unsigned char *frame){
             break;
         }
         else if(input == FLAG)
-            s = FLAG_RECEIVED;
+            s = FLAG_RCV;
         else 
             s = START;
         break;
     case BCC_OK:
         if(input == FLAG){
-            state = STOP_STATE;
+            s = STOP;
             frame[i++]=FLAG;
         }
         else 
@@ -158,5 +156,5 @@ STATE infoMachine(STATE s, unsigned char input, unsigned char *frame){
         break;
     }
 
-    return state; 
+    return s; 
 }

@@ -11,13 +11,13 @@ typedef enum{
 }STATE;
 
 typedef enum{
-    SET,
-    UA,
+    SETFRAME,
+    UAFRAME,
     ACK,
-    DISC
+    DISCFRAME
 }SET_UA;
 
-STATE machine(STATE s, SET_UA type, unsigned char input);
+STATE machine(STATE s, SET_UA type, unsigned char input, int role);
 STATE infoMachine(STATE s, unsigned char input, unsigned char *frame);
  
 #endif

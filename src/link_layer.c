@@ -5,28 +5,25 @@
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
-int frame_num = 0;
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
-int llopen(LinkLayer connectionParameters)
+int llopen(LinkLayer *connectionParameters)
 {
-    int fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
+    int fd = open(connectionParameters->serialPort, O_RDWR | O_NOCTTY);
 
-    connectionParameters.port = fd;
+    connectionParameters->port = fd;
+    printf("fd: %d\n", fd);
 
-    if (fd < 0)
-    {
-        perror(connectionParameters.serialPort);
+    if (fd < 0){
+        perror(connectionParameters->serialPort);
         return -1;
     }
 
-    struct termios oldtio;
     struct termios newtio;
 
     // Save current port settings
-    if (tcgetattr(fd, &oldtio) == -1)
-    {
+    if (tcgetattr(connectionParameters->port, &oldtio) == -1){
         perror("tcgetattr");
         return -1;
     }
@@ -40,8 +37,8 @@ int llopen(LinkLayer connectionParameters)
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 0.1; // Inter-character timer unused
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -54,31 +51,45 @@ int llopen(LinkLayer connectionParameters)
     tcflush(fd, TCIOFLUSH);
 
     // Set new port settings
-    if (tcsetattr(fd, TCSANOW, &newtio) == -1)
-    {
+    if (tcsetattr(fd, TCSANOW, &newtio) == -1){   
         perror("tcsetattr");
         return -1; 
     }
 
-    if(connectionParameters.role == LlTx){
+    if(connectionParameters->role == LlTx){
         unsigned char *SET_frame = (unsigned char*)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
         unsigned char *UA_frame = (unsigned char*)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
 
-        createSupFrame(SET, SET_frame);
+        createSupFrame(SET, SET_frame, connectionParameters->role);
+        printFrame(SET_frame, SUP_FRAME_SIZE);
         write(fd, SET_frame, SUP_FRAME_SIZE);
 
-        sleep(1);
      
-        receiveSupFrame(fd, UA_frame, UA);
+        if(receiveSupFrame(fd, UA_frame, UAFRAME, connectionParameters->role) == 0){
+            printf("couldnt receive frame\n");
+            return 0;
+        }
+        printFrame(UA_frame, SUP_FRAME_SIZE);
+
+        free(SET_frame);
+        free(UA_frame);
     }
-    if(connectionParameters.role == LlRx){
+    if(connectionParameters->role == LlRx){
         unsigned char *SET_frame = (unsigned char*)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
         unsigned char *UA_frame = (unsigned char*)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
 
-        receiveSupFrame(fd, SET_frame, SET);
+        
+        if(receiveSupFrame(fd, SET_frame, SETFRAME, connectionParameters->role) == 0){
+            printf("couldnt receive frame\n");
+            return 0;
+        }
+        printFrame(SET_frame, SUP_FRAME_SIZE);
 
-        createSupFrame(UA, UA_frame);
+        createSupFrame(UA, UA_frame, connectionParameters->role);
+        printFrame(UA_frame, SUP_FRAME_SIZE);
         write(fd, UA_frame, SUP_FRAME_SIZE);
+        free(SET_frame);
+        free(UA_frame);
     }
 
     return 1;
@@ -87,26 +98,30 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-int llwrite(const unsigned char *buf, int bufSize, LinkLayer connectionParameters)
+int llwrite(const unsigned char *buf, int bufSize, LinkLayer *connectionParameters)
 {   
     unsigned char *I_frame = (unsigned char*)malloc((bufSize*2+6) * sizeof(unsigned char));
     unsigned char *ACK_frame = (unsigned char*)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
-    int length = createIFrame(bufSize, buf, frame_num, *I_frame);
-
-    write(connectionParameters.port, I_frame, length);
-
-    sleep(1);
-
-    receiveSupFrame(connectionParameters.port, ACK_frame, ACK);
-
+    int length = createIFrame(bufSize, buf, connectionParameters->sequence_number, I_frame);
+    printFrame(I_frame, length);
+    printf("length da iframe criada = %d\n", length);
+    write(connectionParameters->port, I_frame, length);
+    printf("waiting for sup\n");
+    if(receiveSupFrame(connectionParameters->port, ACK_frame, ACK, connectionParameters->role) == 0)
+        return 0;
+    printf("after sup\n");
+    printFrame(ACK_frame, SUP_FRAME_SIZE);
     if(ACK_frame[2] == C_RR1)
-        frame_num = 1;
+        connectionParameters->sequence_number = 1;
     else if(ACK_frame[2] == C_RR0)
-        frame_num = 0;
+        connectionParameters->sequence_number = 0;
     else{
         printf("oh no\n");
-        return -1;
+        return 0;
     }
+
+    free(I_frame);
+    free(ACK_frame);
 
     return bufSize;
 }
@@ -114,44 +129,54 @@ int llwrite(const unsigned char *buf, int bufSize, LinkLayer connectionParameter
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(unsigned char *packet, LinkLayer connectionParameters)
+int llread(unsigned char *packet, LinkLayer *connectionParameters)
 {
     unsigned char *I_frame = (unsigned char*)malloc((MAX_PAYLOAD_SIZE*2+6) * sizeof(unsigned char));
+    printf("before receiving i frame\n");
 
-    int bytes = receiveIFrame(connectionParameters.port, I_frame);
-    if(bytes == -1){
+    int bytes = receiveIFrame(connectionParameters->port, I_frame);
+    if(bytes == 0){
         printf("error iframe\n");
-        return -1;
+        return 0;
     }
+    printf("bytes da iframe recebida = %d\n", bytes);
 
+    printFrame(I_frame, bytes);
     unsigned char *frame = (unsigned char *)malloc(SUP_FRAME_SIZE*sizeof(unsigned char));
 
-    if(I_frame[2] == C_I0 && connectionParameters.sequence_number == 1){
+    if(I_frame[2] == C_I0 && connectionParameters->sequence_number == 1){
         printf("Resend I1\n");
-        createSupFrame(RR1, frame);
+        bytes = 0;
+        createSupFrame(RR1, frame, connectionParameters->role);
     }
-    else if (I_frame[2] == C_I1 && connectionParameters.sequence_number == 0){
+    else if (I_frame[2] == C_I1 && connectionParameters->sequence_number == 0){
         printf("Resend I0\n");
-        createSupFrame(RR0, frame);
+        bytes = 0;
+        createSupFrame(RR0, frame, connectionParameters->role);
     }
     else if (I_frame[2] == C_I1){
-        createSupFrame(RR0, frame);
+        createSupFrame(RR0, frame, connectionParameters->role);
+        connectionParameters->sequence_number = 0;
     }
     else if (I_frame[2] == C_I0){
-        createSupFrame(RR1, frame);
+        createSupFrame(RR1, frame, connectionParameters->role);
+        connectionParameters->sequence_number = 1;
     }
     else{
-        return -1;
+        return 0;
     } 
+    printf("writing sup!!!\n");
 
-    write(connectionParameters.port, frame, SUP_FRAME_SIZE);
+    write(connectionParameters->port, frame, SUP_FRAME_SIZE);
 
+    printf("putting in the packet\n");
     for(int i = 0; i < bytes; i++){
         packet[i] = I_frame[i+4];
     }
-
-    sleep(1);
-
+    printFrame(frame, SUP_FRAME_SIZE);
+    
+    free(I_frame);
+    free(frame);
     return bytes;
 }
 
@@ -161,67 +186,62 @@ int llread(unsigned char *packet, LinkLayer connectionParameters)
 int llclose(LinkLayer connectionParameters)
 {
     if(connectionParameters.role == LlTx){
-        if(createTDisc(connectionParameters)){
+        unsigned char *frame = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+        unsigned char *RCVframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+        unsigned char *UAframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+
+        createSupFrame(DISCFRAME, frame, connectionParameters.role);
+
+        printf("DISC1: ");
+        printFrame(frame, SUP_FRAME_SIZE);
+
+        write(connectionParameters.port, frame, SUP_FRAME_SIZE);
+
+        if(receiveSupFrame(connectionParameters.port, RCVframe, DISCFRAME, connectionParameters.role) == 0){
             printf("Fail\n");
             return -1;
         }
+        createSupFrame(UA, UAframe, connectionParameters.role);
+
+        printf("UA: ");
+        printFrame(UAframe, SUP_FRAME_SIZE);
+
+        write(connectionParameters.port, UAframe, SUP_FRAME_SIZE);
+        free(frame);
+        free(RCVframe);
+        free(UAframe);
     }
     else if(connectionParameters.role == LlRx){
-        if(createRDisc(connectionParameters)){
-            printf("Fail\n");
-            return -1;
+        unsigned char *frame = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+        unsigned char *RCVframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+        unsigned char *UAframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
+
+        if(receiveSupFrame(connectionParameters.port, frame, DISCFRAME, connectionParameters.role) == 0){
+            printf("Fail1\n");
+            return 0;
         }
+
+        createSupFrame(DISC, RCVframe, connectionParameters.role);
+
+        printf("DISC2: ");
+        printFrame(RCVframe, SUP_FRAME_SIZE);
+
+        write(connectionParameters.port, RCVframe, SUP_FRAME_SIZE);
+
+        if(receiveSupFrame(connectionParameters.port, UAframe, UAFRAME, connectionParameters.role) == 0){
+            printf("Fail2\n");
+            return 0;
+        }
+        free(frame);
+        free(RCVframe);
+        free(UAframe);
     }
 
+    printf("%d\n",connectionParameters.port);
    if (tcsetattr(connectionParameters.port, TCSANOW, &oldtio) == -1){
         perror("Couldn't close port\n");
         return -1;
     }
 
     return close(connectionParameters.port);
-}
-
-int createTDisc(LinkLayer connectionParameters){
-    unsigned char *frame = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
-    unsigned char *RCVframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
-    unsigned char *UAframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
-
-    createSupFrame(DISC, frame);
-
-    write(ll.port, frame, SUP_FRAME_SIZE);
-
-    sleep(1);
-
-    if(receiveSupFrame(connectionParameters.port, RCVframe, DISC) == -1){
-        printf("Fail\n");
-        return -1;
-    }
-
-    createSupFrame(UA, UAframe);
-
-    write(connectionParameters.port, UAframe, SUP_FRAME_SIZE);
-
-    return 1;
-}
-
-int createRDisc(LinkLayer connectionParameters) {
-    unsigned char *frame = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
-    unsigned char *RCVframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
-    unsigned char *UAframe = (unsigned char *)malloc(SUP_FRAME_SIZE * sizeof(unsigned char));
-
-    if(receiveSupFrame(connectionParameters.port, frame, DISC) == -1){
-        printf("Fail\n");
-        return -1;
-    }
-
-    createSupFrame(DISC, RCVframe);
-
-    write(connectionParameters.port, RCVframe, SUP_FRAME_SIZE);
-
-    if(receiveSupFrame(connectionParameters.port, UAframe, UA) == -1){
-        printf("Fail\n");
-        return -1;
-    }
-
-    return 0;
 }

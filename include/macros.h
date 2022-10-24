@@ -32,7 +32,20 @@
 #define C_I0 0x00
 #define C_I1 0XB0
 
-#define PORTS0 "dev/ttyS0"
-#define PORTS1 "dev/ttyS1"
+#define PORTS0 "/dev/ttyS10"
+#define PORTS1 "/dev/ttyS11"
+
+#define ICTRL 0x01
+#define ISTART 0x02
+#define IEND 0x03
+
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <termios.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #endif

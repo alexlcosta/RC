@@ -6,7 +6,6 @@
 
 #include "application_layer.h"
 
-#define BAUDRATE 9600
 #define N_TRIES 3
 #define TIMEOUT 4
 
@@ -26,6 +25,16 @@ int main(int argc, char *argv[])
     const char *role = argv[2];
     const char *filename = argv[3];
 
+    if(strcmp(PORTS0, serialPort) != 0 && strcmp(PORTS1, serialPort) != 0){
+        printf("bad ports\n");
+        return -1;
+    }
+        
+    if(strcmp("tx", role) != 0 && strcmp("rx", role) != 0){
+        printf("incorrect role\n");
+        return -1;
+    }
+        
     printf("Starting link-layer protocol application\n"
            "  - Serial port: %s\n"
            "  - Role: %s\n"
